@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 import json
 from pathlib import Path
 from typing import Any, Iterable
 
 REQUIRED_FIELDS = {"id", "task_type", "prompt", "gold_answer", "metadata"}
+STRING_FIELDS = {"id", "task_type", "prompt", "gold_answer"}
 
 
 @dataclass(frozen=True)
@@ -22,27 +23,37 @@ class BenchmarkExample:
 
     @classmethod
     def from_record(cls, record: dict[str, Any], *, line_number: int | None = None) -> "BenchmarkExample":
-        missing = REQUIRED_FIELDS.difference(record)
         location = f" on line {line_number}" if line_number is not None else ""
+        missing = REQUIRED_FIELDS.difference(record)
         if missing:
             raise ValueError(f"Missing required field(s){location}: {', '.join(sorted(missing))}")
+        for field_name in STRING_FIELDS:
+            if not isinstance(record[field_name], str) or not record[field_name].strip():
+                raise ValueError(f"Field '{field_name}' must be a non-empty string{location}")
         if not isinstance(record["metadata"], dict):
             raise ValueError(f"Field 'metadata' must be an object{location}")
         return cls(
-            id=str(record["id"]),
-            task_type=str(record["task_type"]),
-            prompt=str(record["prompt"]),
-            gold_answer=str(record["gold_answer"]),
+            id=record["id"],
+            task_type=record["task_type"],
+            prompt=record["prompt"],
+            gold_answer=record["gold_answer"],
             metadata=record["metadata"],
         )
 
+    def to_record(self) -> dict[str, Any]:
+        return asdict(self)
+
 
 def load_jsonl_benchmark(path: str | Path) -> list[BenchmarkExample]:
-    """Load benchmark examples from a JSON Lines file."""
+    """Load benchmark examples from a JSON Lines file with schema validation."""
 
     benchmark_path = Path(path)
     examples: list[BenchmarkExample] = []
-    with benchmark_path.open("r", encoding="utf-8") as handle:
+    try:
+        handle = benchmark_path.open("r", encoding="utf-8")
+    except FileNotFoundError as exc:
+        raise ValueError(f"Benchmark file not found: {benchmark_path}") from exc
+    with handle:
         for line_number, line in enumerate(handle, start=1):
             stripped = line.strip()
             if not stripped:
@@ -50,9 +61,9 @@ def load_jsonl_benchmark(path: str | Path) -> list[BenchmarkExample]:
             try:
                 record = json.loads(stripped)
             except json.JSONDecodeError as exc:
-                raise ValueError(f"Invalid JSON on line {line_number}: {exc.msg}") from exc
+                raise ValueError(f"Invalid JSONL format on line {line_number}: {exc.msg}") from exc
             if not isinstance(record, dict):
-                raise ValueError(f"Expected object on line {line_number}")
+                raise ValueError(f"Expected a JSON object on line {line_number}")
             examples.append(BenchmarkExample.from_record(record, line_number=line_number))
     return examples
 
@@ -61,10 +72,4 @@ def iter_jsonl_records(examples: Iterable[BenchmarkExample]) -> Iterable[dict[st
     """Convert examples back to serializable records."""
 
     for example in examples:
-        yield {
-            "id": example.id,
-            "task_type": example.task_type,
-            "prompt": example.prompt,
-            "gold_answer": example.gold_answer,
-            "metadata": example.metadata,
-        }
+        yield example.to_record()

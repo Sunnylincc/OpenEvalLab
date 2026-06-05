@@ -1,162 +1,208 @@
 # OpenEvalLab
 
-OpenEvalLab is a lightweight, extensible research toolkit for evaluating language models, analyzing failure modes, generating targeted synthetic data, and producing reproducible experiment reports.
+OpenEvalLab is a small Python toolkit for evaluating language-model outputs, inspecting failure modes, generating targeted synthetic benchmark examples, and writing reproducible Markdown reports.
 
-The project is intentionally small in its first release: it favors transparent interfaces, plain JSONL benchmarks, deterministic local demos, and composable modules over heavyweight orchestration. The goal is to make evaluation loops easy to inspect, reproduce, and extend.
+It is designed for research workflows where a single score is not enough. A useful evaluation run should make it easy to see **what failed**, **why it failed**, and **what data to create next**.
 
-## Motivation
-
-Language-model evaluation should not stop at a single aggregate score. Practical research workflows need to answer follow-up questions:
-
-- Which examples failed, and why?
-- Are failures concentrated in reasoning, factuality, instruction following, or incompleteness?
-- What new examples should be generated to stress-test the observed weaknesses?
-- Can a report be regenerated later from the same benchmark and evaluation configuration?
-
-OpenEvalLab provides a compact foundation for that loop: **benchmark → model responses → metrics → failure analysis → synthetic data targets → Markdown report**.
-
-## Installation
-
-Install the package in editable mode from the repository root:
+## Install
 
 ```bash
-python -m pip install -e .
+git clone <repo>
+cd OpenEvalLab
+pip install -e .
 ```
 
-For test development:
+The base package has no runtime dependencies. The demo uses a deterministic mock model and does not require an API key.
+
+## 30-second demo
 
 ```bash
-python -m pip install -e '.[dev]'
-pytest
+openevallab demo
 ```
 
-## Quickstart
+This writes:
 
-Run a deterministic evaluation that uses the included mock model and sample reasoning benchmark:
+```text
+results/demo_results.json
+reports/demo_report.md
+```
+
+The terminal output summarizes the benchmark, mean score, pass rate, and paths to the generated artifacts.
+
+## CLI usage
+
+Evaluate a JSONL benchmark with the local mock model:
 
 ```bash
-openevallab eval data/sample_reasoning.jsonl --mock-mode gold
+openevallab eval \
+  --model mock \
+  --benchmark data/sample_reasoning.jsonl \
+  --out results/reasoning_results.json
 ```
 
-Generate a report from failed mock-model outputs:
+Analyze a result file and write a Markdown report:
 
 ```bash
-openevallab report data/sample_biomed_qa.jsonl --output biomed_report.md
+openevallab analyze \
+  --results results/reasoning_results.json \
+  --out reports/reasoning_report.md
 ```
 
-Generate synthetic prompt candidates from observed failures:
+Generate synthetic JSONL examples targeted at observed failures:
 
 ```bash
-openevallab synthesize data/sample_biomed_qa.jsonl --per-failure 2
+openevallab synthesize \
+  --results results/reasoning_results.json \
+  --out data/synthetic_reasoning.jsonl \
+  --num-examples 20
 ```
 
-You can also run the Python examples:
+Available metrics:
 
-```bash
-python examples/quickstart_eval.py
-python examples/synthesize_from_errors.py
-python examples/generate_report.py
+- `exact_match`
+- `normalized_exact_match`
+- `contains_answer` (default)
+- `heuristic_score`
+
+## Python API usage
+
+```python
+from openevallab.analysis import analyze_failures
+from openevallab.benchmarks import load_jsonl_benchmark
+from openevallab.evaluator import evaluate_benchmark, summarize_scores
+from openevallab.models import MockModelClient
+from openevallab.reports import render_markdown_report
+
+examples = load_jsonl_benchmark("data/sample_reasoning.jsonl")
+model = MockModelClient()
+results = evaluate_benchmark(examples, model, metric="contains_answer")
+analysis = analyze_failures(results)
+
+print(summarize_scores(results))
+print(render_markdown_report(
+    model_name=model.model_name,
+    benchmark_path="data/sample_reasoning.jsonl",
+    results=results,
+    failure_analysis=analysis,
+))
 ```
 
-## CLI Examples
+## Benchmark schema
 
-### Evaluate a benchmark
-
-```bash
-openevallab eval data/sample_reasoning.jsonl
-```
-
-The command prints a JSON score summary containing the number of examples, pass rate, and average metric scores.
-
-### Generate a Markdown report
-
-```bash
-openevallab report data/sample_reasoning.jsonl -o report.md
-```
-
-Reports include model metadata, benchmark name, score summary, failure-mode distribution, representative examples, and suggested synthesis targets.
-
-### Create synthetic data candidates
-
-```bash
-openevallab synthesize data/sample_biomed_qa.jsonl --per-failure 1
-```
-
-The current generator is template-based. A model-based generation hook is intentionally left as an extension point so researchers can plug in their own generation policies.
-
-## Benchmark Schema
-
-Benchmarks are JSON Lines files with one object per example. Each record must include:
-
-| Field | Type | Description |
-| --- | --- | --- |
-| `id` | string | Stable example identifier. |
-| `task_type` | string | Task category, such as `biomed_qa` or `multi_step_arithmetic`. |
-| `prompt` | string | Prompt sent to the model. |
-| `gold_answer` | string | Reference answer used by metrics. |
-| `metadata` | object | Free-form metadata for domains, difficulty, provenance, tags, or split names. |
-
-Example:
+Benchmarks are JSON Lines files. Each line must be a JSON object with these fields:
 
 ```json
-{"id":"reasoning-001","task_type":"arithmetic_reasoning","prompt":"If a train leaves at 2 PM and travels for 3 hours, what time does it arrive?","gold_answer":"5 PM","metadata":{"domain":"reasoning","difficulty":"easy"}}
+{
+  "id": "example_001",
+  "task_type": "reasoning",
+  "prompt": "Question text here",
+  "gold_answer": "Expected answer here",
+  "metadata": {
+    "source": "demo",
+    "difficulty": "easy"
+  }
+}
 ```
 
-## Package Structure
+Validation checks that required fields are present, string fields are non-empty, and `metadata` is an object. Errors include the line number when possible.
+
+Included sample datasets:
+
+- `data/sample_reasoning.jsonl`
+- `data/sample_biomed_qa.jsonl`
+
+The biomedical examples are generic, safe educational QA items and avoid unpublished or specialized claims.
+
+## Result file format
+
+`openevallab eval` writes a JSON file with run metadata, aggregate metrics, and one record per example:
+
+```json
+{
+  "schema_version": "1.0",
+  "model_name": "mock",
+  "benchmark_path": "data/sample_reasoning.jsonl",
+  "aggregate_metrics": {
+    "num_examples": 3,
+    "mean_score": 1.0,
+    "pass_rate": 1.0
+  },
+  "results": [
+    {
+      "id": "example_001",
+      "prompt": "Question text here",
+      "gold_answer": "Expected answer here",
+      "model_answer": "Expected answer here",
+      "score": 1.0,
+      "metric": "contains_answer",
+      "passed": true,
+      "task_type": "reasoning",
+      "metadata": {}
+    }
+  ]
+}
+```
+
+## Example report
+
+Reports are Markdown files with:
+
+- title and generation time
+- model name and benchmark path
+- number of examples, mean score, and pass rate
+- failure-mode table
+- representative failed examples
+- synthetic data recommendations
+- suggested next steps
+
+Run `openevallab demo` and open `reports/demo_report.md` to see a generated report.
+
+## Project structure
 
 ```text
 src/openevallab/
   analysis/      failure-mode classification and aggregate statistics
   benchmarks/    JSONL schema and loading utilities
-  metrics/       exact match, contains answer, and judge placeholders
-  models/        BaseModelClient, mock client, and OpenAI-compatible adapter placeholder
-  reports/       Markdown experiment reports
-  synthesis/     failure-driven synthetic prompt generation
-  cli.py         openevallab command-line interface
+  metrics/       exact, normalized, contains-answer, and heuristic scoring
+  models/        BaseModelClient, mock client, and OpenAI-compatible placeholder
+  reports/       Markdown report rendering
+  synthesis/     template-based synthetic benchmark generation
+  cli.py         command-line interface
+
+data/             small sample benchmarks
+examples/         Python API examples
+tests/            unit and CLI tests
 ```
 
-## Model Interfaces
+## Design notes
 
-OpenEvalLab defines a small `BaseModelClient` interface with a single `generate` method. The included `MockModelClient` is deterministic and suitable for demos, examples, and unit tests. `OpenAICompatibleClient` is provided as a placeholder adapter for researchers who want to wire in OpenAI-compatible chat completion APIs without changing the evaluation loop.
+- The default path is local and deterministic: `openevallab demo` uses `MockModelClient`.
+- `OpenAICompatibleClient` is a configuration placeholder for future provider integrations and reads `OPENAI_API_KEY` when used.
+- Failure analysis and synthetic data generation are intentionally heuristic in this first version so they remain auditable and easy to replace.
 
-## Metrics
+## Development
 
-The first release includes:
+```bash
+make install
+make test
+make demo
+make clean
+```
 
-- `exact_match`: normalized string equality.
-- `contains_answer`: checks whether the normalized gold answer appears in the prediction.
-- `llm_judge_placeholder`: explicit placeholder for future semantic judging with a configured model and rubric.
+Or run tests directly:
 
-## Failure Modes
-
-The rule-based analyzer classifies failed examples into:
-
-- factual error
-- reasoning error
-- instruction-following failure
-- incomplete answer
-- hallucination
-- unknown
-
-The heuristics are deliberately transparent. They are designed to be replaced or augmented by domain-specific analyzers as projects mature.
+```bash
+pytest
+```
 
 ## Roadmap
 
-- Add configurable OpenAI-compatible and local inference clients.
-- Support richer metric registries and task-specific scoring.
-- Add model-based synthetic data generation policies.
-- Persist run artifacts as versioned experiment directories.
-- Add HTML report rendering and comparison reports across models.
-- Support benchmark cards with provenance, licensing, and intended-use metadata.
+- Add optional working provider clients while keeping the base install dependency-light.
+- Add task-specific metric registries and benchmark cards.
+- Add model-assisted failure classification behind explicit configuration.
+- Add report comparison across runs and models.
+- Add artifact directories for reproducible experiment bundles.
 
 ## Contributing
 
-Contributions are welcome. Good first contributions include:
-
-- New benchmark loaders or exporters.
-- Additional transparent metrics.
-- Domain-specific failure classifiers.
-- Report templates.
-- Examples that reproduce published evaluation workflows.
-
-Please keep changes small, documented, and covered by tests. OpenEvalLab is meant to remain easy to audit and easy to adapt for research settings.
+Contributions are welcome. Please keep changes focused, documented, and covered by tests. Useful contributions include new benchmark loaders, task-specific metrics, domain-specific failure analyzers, report templates, and well-documented example workflows.

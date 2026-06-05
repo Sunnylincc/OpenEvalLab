@@ -9,3 +9,6 @@ build/
 dist/
 coverage.xml
 htmlcov/
+results/
+reports/
+data/synthetic_*.jsonl

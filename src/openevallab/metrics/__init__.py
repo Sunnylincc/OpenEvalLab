@@ -1,5 +1,23 @@
 """Evaluation metrics."""
 
-from openevallab.metrics.core import MetricResult, contains_answer, exact_match, llm_judge_placeholder
+from openevallab.metrics.core import (
+    METRICS,
+    MetricResult,
+    contains_answer,
+    exact_match,
+    heuristic_score,
+    llm_judge_placeholder,
+    normalize_text,
+    normalized_exact_match,
+)
 
-__all__ = ["MetricResult", "contains_answer", "exact_match", "llm_judge_placeholder"]
+__all__ = [
+    "METRICS",
+    "MetricResult",
+    "contains_answer",
+    "exact_match",
+    "heuristic_score",
+    "llm_judge_placeholder",
+    "normalize_text",
+    "normalized_exact_match",
+]

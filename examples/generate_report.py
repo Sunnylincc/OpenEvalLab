@@ -1,7 +1,5 @@
 """Generate a Markdown report for a local benchmark run."""
 
-from pathlib import Path
-
 from openevallab.analysis import analyze_failures
 from openevallab.benchmarks import load_jsonl_benchmark
 from openevallab.evaluator import evaluate_benchmark
@@ -14,7 +12,7 @@ model = MockModelClient(default_response="I do not know.")
 results = evaluate_benchmark(examples, model)
 report = render_markdown_report(
     model_name=model.model_name,
-    benchmark_name=Path(benchmark_path).stem,
+    benchmark_path=benchmark_path,
     results=results,
     failure_analysis=analyze_failures(results),
 )
