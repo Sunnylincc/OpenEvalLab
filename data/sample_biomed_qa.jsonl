@@ -1,0 +1,3 @@
+{"id":"biomed-001","task_type":"biomed_qa","prompt":"What molecule carries genetic information in most living organisms?","gold_answer":"DNA","metadata":{"domain":"biomed","difficulty":"easy"}}
+{"id":"biomed-002","task_type":"biomed_qa","prompt":"Which blood cells are primarily responsible for carrying oxygen?","gold_answer":"red blood cells","metadata":{"domain":"biomed","difficulty":"easy"}}
+{"id":"biomed-003","task_type":"biomed_qa","prompt":"What organ produces insulin in the human body?","gold_answer":"pancreas","metadata":{"domain":"biomed","difficulty":"easy"}}
